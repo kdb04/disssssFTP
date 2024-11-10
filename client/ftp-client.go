@@ -22,6 +22,11 @@ func main() {
     fileName := os.Args[1]
     //filePath := filepath.Join("client", fileName) 
 
+    if _, err := os.Stat(fileName); os.IsNotExist(err){
+        fmt.Println("Error: File doesn't exist.")
+        return 
+    }
+
     // Connecting to server
     conn, err := net.Dial("tcp", serverAddress)
     if err != nil {
