@@ -2,3 +2,8 @@ test
 claudeai
 client/go.mod
 go.mod
+
+client/client.go
+/uploads
+test*
+client/test*
