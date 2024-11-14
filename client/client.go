@@ -19,7 +19,7 @@ import (
 
 const (
 	serverAddress = "localhost:9090"
-	bufferSize    = 1024
+	bufferSize    = 32 * 1024 // fix later
 	idleTimeout   = 5 * time.Minute
 )
 
@@ -33,13 +33,11 @@ func main() {
 	}
 	defer conn.Close()
 
-	done := make(chan struct{})
-
 	go func() {
 		<-sigChannel
 		log.Println("\nCtrl+C detected, shutting down the client...")
-		close(done)
 		conn.Close()
+		os.Exit(0)
 	}()
 
 	if !authenticate(conn) {
@@ -47,33 +45,29 @@ func main() {
 	}
 
 	for {
-		select {
-		case <-done:
-			return
-		default:
-			fmt.Print("Enter file path to upload (or 'exit' to quit): ")
-			reader := bufio.NewReader(os.Stdin)
-			filePath, _ := reader.ReadString('\n')
-			filePath = strings.TrimSpace(filePath)
+		fmt.Print("\nEnter file path to upload (or 'exit' to quit): ")
+		reader := bufio.NewReader(os.Stdin)
+		filePath, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Printf("Error reading input: %v\n", err)
+			continue
+		}
 
-			if filePath == "exit" {
-				fmt.Println("Exiting...")
+		filePath = strings.TrimSpace(filePath)
+
+		if filePath == "exit" {
+			fmt.Println("Exiting...")
+			return
+		}
+
+		if err := sendFile(conn, filePath); err != nil {
+			if strings.Contains(err.Error(), "connection reset by peer") ||
+				strings.Contains(err.Error(), "broken pipe") {
+				fmt.Println("Connection to server lost")
 				return
 			}
-
-			fileInfo, err := os.Stat(filePath)
-			if os.IsNotExist(err) || (err == nil && fileInfo.IsDir()) {
-				fmt.Println("File does not exist at the specified path. Please try again.")
-				continue
-			}
-
-			if err := sendFile(conn, filePath); err != nil {
-				log.Printf("Failed to send file: %v", err)
-			} else {
-				fmt.Printf("File %s sent successfully.\n", filePath)
-			}
-
-			conn.SetDeadline(time.Now().Add(idleTimeout))
+			fmt.Printf("Failed to send file: %v\n", err)
+			continue
 		}
 	}
 }
@@ -105,9 +99,9 @@ func authenticate(conn net.Conn) bool {
 		return false
 	}
 
-	if serverResponse != "Authentication successful. You are now connected.\n" {
-		fmt.Printf("Authentication failed. Server response: %s\n", serverResponse)
-		return false
+	if strings.Contains(serverResponse, "Authentication successful") {
+		fmt.Println("Authentication successful")
+		return true
 	}
 
 	fmt.Println("Authentication successful.")
@@ -121,6 +115,14 @@ func sendFile(conn net.Conn, filePath string) error {
 	}
 	defer file.Close()
 
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("error getting file info: %v", err)
+	}
+
+	if fileInfo.IsDir() {
+		return fmt.Errorf("cannot send directories")
+	}
 	// Get the base name of the file
 	fileName := filepath.Base(filePath)
 	fileNameBytes := []byte(fileName)
@@ -136,27 +138,44 @@ func sendFile(conn net.Conn, filePath string) error {
 		return fmt.Errorf("error sending filename: %v", err)
 	}
 
-	// Send file content in chunks
+	// Send file size
+	if err := binary.Write(conn, binary.LittleEndian, fileInfo.Size()); err != nil {
+		return fmt.Errorf("error sending file size: %v", err)
+	}
+
+	// Send file content
 	buf := make([]byte, bufferSize)
+	bytesSent := int64(0)
 	for {
 		n, err := file.Read(buf)
+		if err == io.EOF {
+			break
+		}
 		if err != nil {
-			if err == io.EOF {
-				fmt.Printf("File %s upload complete.\n", filePath)
-				break
-			}
 			return fmt.Errorf("error reading file: %v", err)
 		}
+
 		if _, err := conn.Write(buf[:n]); err != nil {
 			return fmt.Errorf("error sending file content: %v", err)
 		}
+		bytesSent += int64(n)
+
+		// Show progress
+		progress := float64(bytesSent) / float64(fileInfo.Size()) * 100
+		fmt.Printf("\rProgress: %.1f%%", progress)
+	}
+	fmt.Println()
+
+	// Wait for server ack
+	response, err := bufio.NewReader(conn).ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("error reading server response: %v", err)
 	}
 
-	confirmation := make([]byte, 4)
-	if _, err = conn.Read(confirmation); err == nil && string(confirmation) == "Done" {
-		fmt.Println("Server confirmed successful file transfer.")
-	} else {
-		return fmt.Errorf("error receiving server confirmation: %v", err)
+	if strings.TrimSpace(response) != "Done" {
+		return fmt.Errorf("unexpected server response: %s", response)
 	}
+
+	fmt.Printf("Successfully sent %s (%d bytes)\n", fileName, bytesSent)
 	return nil
 }
