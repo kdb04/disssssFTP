@@ -42,49 +42,43 @@ func main() {
 		conn.Close()
 	}()
 
-	// Authentication process
 	if !authenticate(conn) {
 		return
 	}
 
-	// File upload loop
 	for {
 		select {
 		case <-done:
 			return
 		default:
-			// Prompt for file path or exit command
 			fmt.Print("Enter file path to upload (or 'exit' to quit): ")
 			reader := bufio.NewReader(os.Stdin)
 			filePath, _ := reader.ReadString('\n')
 			filePath = strings.TrimSpace(filePath)
 
 			if filePath == "exit" {
-				// The exit message is commented as per the original code's requirement
+				fmt.Println("Exiting...")
 				return
 			}
 
-			// Check if the file exists and is not a directory
 			fileInfo, err := os.Stat(filePath)
 			if os.IsNotExist(err) || (err == nil && fileInfo.IsDir()) {
 				fmt.Println("File does not exist at the specified path. Please try again.")
 				continue
 			}
 
-			// Send the file to the server
 			if err := sendFile(conn, filePath); err != nil {
 				log.Printf("Failed to send file: %v", err)
+			} else {
+				fmt.Printf("File %s sent successfully.\n", filePath)
 			}
 
-			// Reset the connection's idle timeout
 			conn.SetDeadline(time.Now().Add(idleTimeout))
 		}
 	}
 }
 
-// Authentication method to login the user
 func authenticate(conn net.Conn) bool {
-	// Prompt the user for username and password
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("Enter username: ")
 	username, _ := reader.ReadString('\n')
@@ -99,21 +93,18 @@ func authenticate(conn net.Conn) bool {
 	password := strings.TrimSpace(string(bytePassword))
 	fmt.Println()
 
-	// Send credentials to the server
 	credentials := fmt.Sprintf("%s:%s", username, password)
 	if _, err := conn.Write([]byte(credentials + "\n")); err != nil {
 		fmt.Println("Error sending credentials:", err)
 		return false
 	}
 
-	// Read the server response for authentication
 	serverResponse, err := bufio.NewReader(conn).ReadString('\n')
 	if err != nil {
 		fmt.Println("Error reading server response:", err)
 		return false
 	}
 
-	// Check if authentication was successful
 	if serverResponse != "Authentication successful. You are now connected.\n" {
 		fmt.Printf("Authentication failed. Server response: %s\n", serverResponse)
 		return false
@@ -123,7 +114,6 @@ func authenticate(conn net.Conn) bool {
 	return true
 }
 
-// Send the file to the server
 func sendFile(conn net.Conn, filePath string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -141,7 +131,7 @@ func sendFile(conn net.Conn, filePath string) error {
 		return fmt.Errorf("error sending filename length: %v", err)
 	}
 
-	// Send the file name
+	// Send file name
 	if _, err := conn.Write(fileNameBytes); err != nil {
 		return fmt.Errorf("error sending filename: %v", err)
 	}
@@ -152,6 +142,7 @@ func sendFile(conn net.Conn, filePath string) error {
 		n, err := file.Read(buf)
 		if err != nil {
 			if err == io.EOF {
+				fmt.Printf("File %s upload complete.\n", filePath)
 				break
 			}
 			return fmt.Errorf("error reading file: %v", err)
@@ -161,23 +152,11 @@ func sendFile(conn net.Conn, filePath string) error {
 		}
 	}
 
-	// Await server confirmation
-	confirmation := make([]byte, 1024)
-	conn.SetReadDeadline(time.Now().Add(10 * time.Second)) // Avoid hanging indefinitely
-	if _, err = conn.Read(confirmation); err == nil {
-		serverResponse := string(confirmation)
-		if strings.Contains(serverResponse, "successfully") {
-			// Commented out per the original request
-		} else {
-			// Commented out per the original request
-		}
+	confirmation := make([]byte, 4)
+	if _, err = conn.Read(confirmation); err == nil && string(confirmation) == "Done" {
+		fmt.Println("Server confirmed successful file transfer.")
 	} else {
-		// If there is a problem receiving confirmation, no action is taken,
-		// but the error is silently ignored to prevent the client from crashing.
+		return fmt.Errorf("error receiving server confirmation: %v", err)
 	}
-
-	// Reset read deadline after confirmation
-	conn.SetReadDeadline(time.Time{})
-
 	return nil
 }
