@@ -24,7 +24,50 @@ var (
 const (
 	idleTimeout = 5 * time.Minute
 	baseDir     = "./uploads"
+	credentials = "id_passwd.txt"
 )
+
+func main() {
+	// Ensure base upload directory exists
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		log.Fatalf("Error creating base upload directory: %v", err)
+	}
+
+	credentials, err := readCredentials(credentials)
+	if err != nil {
+		log.Fatalf("Error reading credentials: %v", err)
+	}
+
+	listener, err = net.Listen("tcp", ":9090")
+	if err != nil {
+		log.Fatalf("Error starting server: %v", err)
+	}
+	defer listener.Close()
+
+	log.Println("TCP server is listening on port 9090...")
+
+	var wg sync.WaitGroup
+	signalChannel := make(chan os.Signal, 1)
+	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
+
+	// Handle shutdown gracefully
+	// it is now a seperate func
+	go handleShutdown(signalChannel, &wg)
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			if strings.Contains(err.Error(), "use of closed network connection") {
+				break
+			}
+			log.Printf("Error accepting connection: %v", err)
+			continue
+		}
+
+		wg.Add(1)
+		go handleConnection(conn, credentials, &wg)
+	}
+}
 
 func readCredentials(filePath string) (map[string]string, error) {
 	file, err := os.Open(filePath)
@@ -80,6 +123,33 @@ func handleConnection(conn net.Conn, credentials map[string]string, wg *sync.Wai
 		return
 	}
 
+	handleClientOperations(conn, username, clientDir)
+}
+
+// Authentication function to validate the client credentials
+func authenticate(conn net.Conn, credentials map[string]string) string {
+	buf := make([]byte, 1024)
+	n, err := conn.Read(buf)
+	if err != nil {
+		log.Println("Error reading credentials:", err)
+		return ""
+	}
+
+	input := strings.TrimSpace(string(buf[:n]))
+	parts := strings.Split(input, ":")
+	if len(parts) != 2 {
+		conn.Write([]byte("Invalid format. Use username:password format.\n"))
+		return ""
+	}
+
+	username, password := parts[0], parts[1]
+	if storedPassword, ok := credentials[username]; ok && storedPassword == password {
+		return username
+	}
+	return ""
+}
+
+func handleClientOperations(conn net.Conn, username, clientDir string) {
 	// Receive file from the client
 	for {
 		if err := conn.SetReadDeadline(time.Now().Add(idleTimeout)); err != nil {
@@ -111,124 +181,63 @@ func handleConnection(conn net.Conn, credentials map[string]string, wg *sync.Wai
 			return
 		}
 
-		// Create file path in the client's directory
 		filePath := filepath.Join(clientDir, fileName)
-		file, err := os.Create(filePath)
-		if err != nil {
-			log.Printf("Error creating file %s for %s: %v", filePath, username, err)
-			conn.Write([]byte("Error: Failed to create file\n"))
-			continue
-		}
-
-		// Read file content
-		bytesReceived := int64(0)
-		buf := make([]byte, 32*1024) // 32KB buffer (prolly split the large file later on!)
-		for bytesReceived < fileSize {
-			n, err := conn.Read(buf)
-			if err != nil {
-				if err != io.EOF {
-					log.Printf("Error receiving file from %s: %v", username, err)
-					file.Close()
-					os.Remove(filePath)
-					return
-				}
-				break
-			}
-
-			if _, err := file.Write(buf[:n]); err != nil {
-				log.Printf("Error writing to file %s for %s: %v", fileName, username, err)
-				file.Close()
-				os.Remove(filePath)
-				return
-			}
-			bytesReceived += int64(n)
-		}
-
-		file.Close()
-		log.Printf("File %s received from %s (%d bytes)", fileName, username, bytesReceived)
-
-		// Send ack
-		if _, err := conn.Write([]byte("Done\n")); err != nil {
-			log.Printf("Error sending acknowledgment to %s: %v", username, err)
+		if err := handleFileUpload(conn, filePath, fileSize, username); err != nil {
+			log.Printf("Error handling file upload: %v", err)
 			return
 		}
 	}
 }
 
-// Authentication function to validate the client credentials
-func authenticate(conn net.Conn, credentials map[string]string) string {
-	buf := make([]byte, 1024)
-	n, err := conn.Read(buf)
+func handleFileUpload(conn net.Conn, filePath string, fileSize int64, username string) error {
+	file, err := os.Create(filePath)
 	if err != nil {
-		log.Println("Error reading credentials:", err)
-		return ""
+		log.Printf("Error creating file %s for %s: %v", filePath, username, err)
+		conn.Write([]byte("Error: Failed to create file\n"))
+		return err
+	}
+	defer file.Close()
+
+	// Read file content
+	bytesReceived := int64(0)
+	buf := make([]byte, 32*1024) // 32KB buffer (prolly split the large file later on!)
+	for bytesReceived < fileSize {
+		n, err := conn.Read(buf)
+		if err != nil {
+			if err != io.EOF {
+				log.Printf("Error receiving file from %s: %v", username, err)
+				file.Close()
+				os.Remove(filePath)
+				return err
+			}
+			break
+		}
+
+		if _, err := file.Write(buf[:n]); err != nil {
+			log.Printf("Error writing to file for %s: %v", username, err)
+			os.Remove(filePath)
+			return err
+		}
+		bytesReceived += int64(n)
 	}
 
-	input := strings.TrimSpace(string(buf[:n]))
-	parts := strings.Split(input, ":")
-	if len(parts) != 2 {
-		conn.Write([]byte("Invalid format. Use username:password format.\n"))
-		return ""
-	}
-
-	username, password := parts[0], parts[1]
-	if storedPassword, ok := credentials[username]; ok && storedPassword == password {
-		return username
-	}
-	return ""
+	log.Printf("File %s received from %s (%d bytes)", filepath.Base(filePath), username, bytesReceived)
+	conn.Write([]byte("Done\n"))
+	return nil
 }
 
-func main() {
-	// Ensure base upload directory exists
-	if err := os.MkdirAll(baseDir, 0755); err != nil {
-		log.Fatalf("Error creating base upload directory: %v", err)
+func handleShutdown(signalChannel chan os.Signal, wg *sync.WaitGroup) {
+	<-signalChannel
+	log.Println("Shutting down server...")
+	listener.Close()
+
+	mu.Lock()
+	for _, conn := range authenticatedSessions {
+		conn.Close()
 	}
+	mu.Unlock()
 
-	credentials, err := readCredentials("id_passwd.txt")
-	if err != nil {
-		log.Fatalf("Error reading credentials: %v", err)
-	}
-
-	listener, err = net.Listen("tcp", ":9090")
-	if err != nil {
-		log.Fatalf("Error starting server: %v", err)
-	}
-	defer listener.Close()
-
-	log.Println("TCP server is listening on port 9090...")
-
-	var wg sync.WaitGroup
-	signalChannel := make(chan os.Signal, 1)
-	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
-
-	// Handle shutdown gracefully
-	go func() {
-		<-signalChannel
-		log.Println("Shutting down server...")
-		listener.Close()
-
-		mu.Lock()
-		for _, conn := range authenticatedSessions {
-			conn.Close()
-		}
-		mu.Unlock()
-
-		wg.Wait()
-		log.Println("Server shutdown complete")
-		os.Exit(0)
-	}()
-
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			if strings.Contains(err.Error(), "use of closed network connection") {
-				break
-			}
-			log.Printf("Error accepting connection: %v", err)
-			continue
-		}
-
-		wg.Add(1)
-		go handleConnection(conn, credentials, &wg)
-	}
+	wg.Wait()
+	log.Println("Server shutdown complete")
+	os.Exit(0)
 }

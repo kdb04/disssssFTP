@@ -8,7 +8,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -23,51 +22,68 @@ const (
 	idleTimeout   = 5 * time.Minute
 )
 
-func main() {
-	sigChannel := make(chan os.Signal, 1)
-	signal.Notify(sigChannel, os.Interrupt, syscall.SIGTERM)
+// FileOperation represents different file operations
+type FileOperation struct {
+	conn net.Conn
+}
 
+func main() {
 	conn, err := net.Dial("tcp", serverAddress)
 	if err != nil {
 		log.Fatalf("Failed to connect to server: %v", err)
 	}
 	defer conn.Close()
 
-	go func() {
-		<-sigChannel
-		log.Println("\nCtrl+C detected, shutting down the client...")
-		conn.Close()
-		os.Exit(0)
-	}()
-
 	if !authenticate(conn) {
 		return
 	}
 
+	fileOp := FileOperation{conn: conn}
+
 	for {
-		fmt.Print("\nEnter file path to upload (or 'exit' to quit): ")
+		fmt.Println("\nFile Transfer Menu:")
+		fmt.Println("1. Upload File")
+		fmt.Println("2. Download File")
+		fmt.Println("3. View File")
+		fmt.Println("4. Delete File")
+		fmt.Println("5. List Files")
+		fmt.Println("6. Exit")
+		fmt.Print("\nEnter your choice: ")
+
 		reader := bufio.NewReader(os.Stdin)
-		filePath, err := reader.ReadString('\n')
-		if err != nil {
-			fmt.Printf("Error reading input: %v\n", err)
-			continue
-		}
+		choice, _ := reader.ReadString('\n')
+		choice = strings.TrimSpace(choice)
 
-		filePath = strings.TrimSpace(filePath)
-
-		if filePath == "exit" {
+		switch choice {
+		case "1":
+			fmt.Print("Enter file path to upload: ")
+			filePath, _ := reader.ReadString('\n')
+			filePath = strings.TrimSpace(filePath)
+			if err := fileOp.uploadFile(filePath); err != nil {
+				fmt.Printf("Upload failed: %v\n", err)
+			}
+		case "2":
+			fmt.Print("Enter file name to download: ")
+			fileName, _ := reader.ReadString('\n')
+			fileName = strings.TrimSpace(fileName)
+			fileOp.downloadFile(fileName)
+		case "3":
+			fmt.Print("Enter file name to view: ")
+			fileName, _ := reader.ReadString('\n')
+			fileName = strings.TrimSpace(fileName)
+			fileOp.viewFile(fileName)
+		case "4":
+			fmt.Print("Enter file name to delete: ")
+			fileName, _ := reader.ReadString('\n')
+			fileName = strings.TrimSpace(fileName)
+			fileOp.deleteFile(fileName)
+		case "5":
+			fileOp.listFiles()
+		case "6":
 			fmt.Println("Exiting...")
 			return
-		}
-
-		if err := sendFile(conn, filePath); err != nil {
-			if strings.Contains(err.Error(), "connection reset by peer") ||
-				strings.Contains(err.Error(), "broken pipe") {
-				fmt.Println("Connection to server lost")
-				return
-			}
-			fmt.Printf("Failed to send file: %v\n", err)
-			continue
+		default:
+			fmt.Println("Invalid choice. Please try again.")
 		}
 	}
 }
@@ -108,7 +124,7 @@ func authenticate(conn net.Conn) bool {
 	return true
 }
 
-func sendFile(conn net.Conn, filePath string) error {
+func (f *FileOperation) uploadFile(filePath string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("error opening file: %v", err)
@@ -129,17 +145,17 @@ func sendFile(conn net.Conn, filePath string) error {
 	fileNameLen := int32(len(fileNameBytes))
 
 	// Send file name length
-	if err := binary.Write(conn, binary.LittleEndian, fileNameLen); err != nil {
+	if err := binary.Write(f.conn, binary.LittleEndian, fileNameLen); err != nil {
 		return fmt.Errorf("error sending filename length: %v", err)
 	}
 
 	// Send file name
-	if _, err := conn.Write(fileNameBytes); err != nil {
+	if _, err := f.conn.Write(fileNameBytes); err != nil {
 		return fmt.Errorf("error sending filename: %v", err)
 	}
 
 	// Send file size
-	if err := binary.Write(conn, binary.LittleEndian, fileInfo.Size()); err != nil {
+	if err := binary.Write(f.conn, binary.LittleEndian, fileInfo.Size()); err != nil {
 		return fmt.Errorf("error sending file size: %v", err)
 	}
 
@@ -155,7 +171,7 @@ func sendFile(conn net.Conn, filePath string) error {
 			return fmt.Errorf("error reading file: %v", err)
 		}
 
-		if _, err := conn.Write(buf[:n]); err != nil {
+		if _, err := f.conn.Write(buf[:n]); err != nil {
 			return fmt.Errorf("error sending file content: %v", err)
 		}
 		bytesSent += int64(n)
@@ -167,7 +183,7 @@ func sendFile(conn net.Conn, filePath string) error {
 	fmt.Println()
 
 	// Wait for server ack
-	response, err := bufio.NewReader(conn).ReadString('\n')
+	response, err := bufio.NewReader(f.conn).ReadString('\n')
 	if err != nil {
 		return fmt.Errorf("error reading server response: %v", err)
 	}
@@ -178,4 +194,21 @@ func sendFile(conn net.Conn, filePath string) error {
 
 	fmt.Printf("Successfully sent %s (%d bytes)\n", fileName, bytesSent)
 	return nil
+}
+
+// Placeholder functions for other operations
+func (f *FileOperation) downloadFile(fileName string) {
+	fmt.Println("Sai Sathvik - Download functionality not implemented yet")
+}
+
+func (f *FileOperation) viewFile(fileName string) {
+	fmt.Println("Niggil - View functionality not implemented yet")
+}
+
+func (f *FileOperation) deleteFile(fileName string) {
+	fmt.Println("Lohit - Delete functionality not implemented yet")
+}
+
+func (f *FileOperation) listFiles() {
+	fmt.Println("kk - List functionality not implemented yet")
 }
