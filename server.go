@@ -307,11 +307,13 @@ func handleFileDownload(conn net.Conn, username string) error {
 	}
 
 	// Send file size (positive number indicates success)
-	if err := binary.Write(conn, binary.LittleEndian, fileInfo.Size()); err != nil {
+	fileSize := fileInfo.Size()
+	if err := binary.Write(conn, binary.LittleEndian, fileSize); err != nil {
 		return fmt.Errorf("error sending file size: %v", err)
 	}
 
 	buf := make([]byte, 1024)
+	bytesSent := int64(0)
 	for {
 		n, err := file.Read(buf)
 		if err == io.EOF {
@@ -324,8 +326,10 @@ func handleFileDownload(conn net.Conn, username string) error {
 		if _, err := conn.Write(buf[:n]); err != nil {
 			return fmt.Errorf("error sending file content: %v", err)
 		}
+		bytesSent += int64(n)
 	}
 
+	fmt.Printf("File '%s' successfully downloaded by user '%s' (%d bytes)\n", fileName, username, bytesSent)
 	return nil
 }
 
