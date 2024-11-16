@@ -133,6 +133,7 @@ func authenticate(conn net.Conn, credentials map[string]string) string {
 	n, err := conn.Read(buf)
 	if err != nil {
 		log.Println("Error reading credentials:", err)
+        conn.Write([]byte("Authentication failed: Error reading credentials\n"))
 		return ""
 	}
 
@@ -147,12 +148,15 @@ func authenticate(conn net.Conn, credentials map[string]string) string {
 	if storedPassword, ok := credentials[username]; ok && storedPassword == password {
 		return username
 	}
-	return ""
+
+    conn.Write([]byte("Authentication failed: Invalid credentials\n"))
+    log.Printf("Failed authentication attempt for user: %s", username)
+    return ""
 }
 
 func handleClientOperations(conn net.Conn, username, clientDir string) {
     reader := bufio.NewReader(conn)
-    
+
     for {
         if err := conn.SetReadDeadline(time.Now().Add(idleTimeout)); err != nil {
             log.Printf("Error setting read deadline: %v", err)
@@ -249,7 +253,7 @@ func handleFileUpload(conn net.Conn, filePath string, fileSize int64, username s
     }
 
     log.Printf("File %s received from %s (%d bytes)", filepath.Base(filePath), username, bytesReceived)
-    
+
     // Send acknowledgment with newline
     if _, err := conn.Write([]byte("Done\n")); err != nil {
         return fmt.Errorf("error sending acknowledgment: %v", err)
