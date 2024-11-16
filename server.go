@@ -203,6 +203,26 @@ func handleClientOperations(conn net.Conn, username, clientDir string) {
             }
             reader.Reset(conn)
 
+        case 3: //View files
+            var fileNameLen int32
+            if err := binary.Read(reader, binary.LittleEndian, &fileNameLen); err != nil {
+                log.Printf("Error reading filename length: %v", err)
+                return
+            }
+
+            fileNameBuf := make([]byte, fileNameLen)
+            if _, err := io.ReadFull(reader, fileNameBuf); err != nil {
+                log.Printf("Error reading filename: %v", err)
+                return
+            }
+            fileName := string(fileNameBuf)
+
+            if err := handleViewFile(conn, filepath.Join(clientDir, fileName), username); err != nil {
+                log.Printf("Error handling file view: %v", err)
+                return
+            }
+            reader.Reset(conn)
+
         case 5: // List files
             if err := handleListFiles(conn, clientDir); err != nil {
                 log.Printf("Error handling list files for %s: %v", username, err)
@@ -312,9 +332,60 @@ func handleListFiles(conn net.Conn, clientDir string) error {
 	return nil
 }
 
+func handleViewFile(conn net.Conn, filePath string, username string) error {
+    fileInfo, err := os.Stat(filePath)
+    if err != nil {
+        if os.IsNotExist(err) {
+            conn.Write([]byte{0}) 
+            return fmt.Errorf("file does not exist: %v", err)
+        }
+        conn.Write([]byte{0}) 
+        log.Printf("Error checking file for user %s: %s - %v", username, filepath.Base(filePath), err)
+        return fmt.Errorf("error checking file: %v", err)
+    }
+
+    log.Printf("User %s is viewing file: %s (size %d bytes)", username, filepath.Base(filePath), fileInfo.Size())
+
+    if _, err := conn.Write([]byte{1}); err != nil {
+        return fmt.Errorf("error sending status: %v", err)
+    }
+
+    // Send file size
+    if err := binary.Write(conn, binary.LittleEndian, fileInfo.Size()); err != nil {
+        return fmt.Errorf("error sending file size: %v", err)
+    }
+
+    // Read file
+    file, err := os.Open(filePath)
+    if err != nil {
+        return fmt.Errorf("error opening file: %v", err)
+    }
+    defer file.Close()
+
+    // Send file content
+    buf := make([]byte, 1024)
+    for {
+        n, err := file.Read(buf)
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            return fmt.Errorf("error reading file: %v", err)
+        }
+
+        if _, err := conn.Write(buf[:n]); err != nil {
+            return fmt.Errorf("error sending file content: %v", err)
+        }
+    }
+
+    return nil
+}
+
+
 func handleShutdown(signalChannel chan os.Signal, wg *sync.WaitGroup) {
 	<-signalChannel
-	log.Println("Shutting down server...")
+    fmt.Print("\r")
+	log.Println("Ctrl+C encountered. Shutting down server...")
 	listener.Close()
 
 	mu.Lock()
