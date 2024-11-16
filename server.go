@@ -133,7 +133,7 @@ func authenticate(conn net.Conn, credentials map[string]string) string {
 	n, err := conn.Read(buf)
 	if err != nil {
 		log.Println("Error reading credentials:", err)
-        conn.Write([]byte("Authentication failed: Error reading credentials\n"))
+		conn.Write([]byte("Authentication failed: Error reading credentials\n"))
 		return ""
 	}
 
@@ -149,59 +149,59 @@ func authenticate(conn net.Conn, credentials map[string]string) string {
 		return username
 	}
 
-    conn.Write([]byte("Authentication failed: Invalid credentials\n"))
-    log.Printf("Failed authentication attempt for user: %s", username)
-    return ""
+	conn.Write([]byte("Authentication failed: Invalid credentials\n"))
+	log.Printf("Failed authentication attempt for user: %s", username)
+	return ""
 }
 
 func handleClientOperations(conn net.Conn, username, clientDir string) {
-    reader := bufio.NewReader(conn)
+	reader := bufio.NewReader(conn)
 
-    for {
-        if err := conn.SetReadDeadline(time.Now().Add(idleTimeout)); err != nil {
-            log.Printf("Error setting read deadline: %v", err)
-            return
-        }
+	for {
+		if err := conn.SetReadDeadline(time.Now().Add(idleTimeout)); err != nil {
+			log.Printf("Error setting read deadline: %v", err)
+			return
+		}
 
-        opType, err := reader.ReadByte()
-        if err != nil {
-            if err == io.EOF || strings.Contains(err.Error(), "connection reset by peer") {
-                log.Printf("Client %s disconnected", username)
-                return
-            }
-            log.Printf("Error reading operation type from %s: %v", username, err)
-            return
-        }
+		opType, err := reader.ReadByte()
+		if err != nil {
+			if err == io.EOF || strings.Contains(err.Error(), "connection reset by peer") {
+				log.Printf("Client %s disconnected", username)
+				return
+			}
+			log.Printf("Error reading operation type from %s: %v", username, err)
+			return
+		}
 
-        switch opType {
-        case 1: // File upload
-            // Read filename length
-            var fileNameLen int32
-            if err := binary.Read(reader, binary.LittleEndian, &fileNameLen); err != nil {
-                log.Printf("Error reading filename length: %v", err)
-                return
-            }
+		switch opType {
+		case 1: // File upload
+			// Read filename length
+			var fileNameLen int32
+			if err := binary.Read(reader, binary.LittleEndian, &fileNameLen); err != nil {
+				log.Printf("Error reading filename length: %v", err)
+				return
+			}
 
-            // Read filename
-            fileNameBuf := make([]byte, fileNameLen)
-            if _, err := io.ReadFull(reader, fileNameBuf); err != nil {
-                log.Printf("Error reading filename: %v", err)
-                return
-            }
-            fileName := string(fileNameBuf)
+			// Read filename
+			fileNameBuf := make([]byte, fileNameLen)
+			if _, err := io.ReadFull(reader, fileNameBuf); err != nil {
+				log.Printf("Error reading filename: %v", err)
+				return
+			}
+			fileName := string(fileNameBuf)
 
-            // Read file size
-            var fileSize int64
-            if err := binary.Read(reader, binary.LittleEndian, &fileSize); err != nil {
-                log.Printf("Error reading file size: %v", err)
-                return
-            }
+			// Read file size
+			var fileSize int64
+			if err := binary.Read(reader, binary.LittleEndian, &fileSize); err != nil {
+				log.Printf("Error reading file size: %v", err)
+				return
+			}
 
-            if err := handleFileUpload(conn, filepath.Join(clientDir, fileName), fileSize, username); err != nil {
-                log.Printf("Error handling file upload: %v", err)
-                return
-            }
-            reader.Reset(conn)
+			if err := handleFileUpload(conn, filepath.Join(clientDir, fileName), fileSize, username); err != nil {
+				log.Printf("Error handling file upload: %v", err)
+				return
+			}
+			reader.Reset(conn)
 
 		case 2: // File download
 			if err := handleFileDownload(conn, username); err != nil {
@@ -209,130 +209,145 @@ func handleClientOperations(conn net.Conn, username, clientDir string) {
 				return
 			}
 
-        case 5: // List files
-            if err := handleListFiles(conn, clientDir); err != nil {
-                log.Printf("Error handling list files for %s: %v", username, err)
-                return
-            }
-            reader.Reset(conn) // Reset reader after operation
+		case 5: // List files
+			if err := handleListFiles(conn, clientDir); err != nil {
+				log.Printf("Error handling list files for %s: %v", username, err)
+				return
+			}
+			reader.Reset(conn) // Reset reader after operation
 
-        default:
-            log.Printf("Unknown operation type %d from %s", opType, username)
-            return
-        }
-    }
+		default:
+			log.Printf("Unknown operation type %d from %s", opType, username)
+			return
+		}
+	}
 }
 
 func handleFileUpload(conn net.Conn, filePath string, fileSize int64, username string) error {
-    file, err := os.Create(filePath)
-    if err != nil {
-        conn.Write([]byte("Error: Failed to create file\n"))
-        return err
-    }
-    defer file.Close()
+	file, err := os.Create(filePath)
+	if err != nil {
+		conn.Write([]byte("Error: Failed to create file\n"))
+		return err
+	}
+	defer file.Close()
 
-    // Read file content with a buffered reader
-    reader := bufio.NewReader(conn)
-    bytesReceived := int64(0)
-    buf := make([]byte, 1024)
+	// Read file content with a buffered reader
+	reader := bufio.NewReader(conn)
+	bytesReceived := int64(0)
+	buf := make([]byte, 1024)
 
-    for bytesReceived < fileSize {
-        n, err := reader.Read(buf)
-        if err != nil && err != io.EOF {
-            conn.Write([]byte("Error: Failed to receive file\n"))
-            os.Remove(filePath)
-            return err
-        }
+	for bytesReceived < fileSize {
+		n, err := reader.Read(buf)
+		if err != nil && err != io.EOF {
+			conn.Write([]byte("Error: Failed to receive file\n"))
+			os.Remove(filePath)
+			return err
+		}
 
-        if n > 0 {
-            if _, err := file.Write(buf[:n]); err != nil {
-                conn.Write([]byte("Error: Failed to write file\n"))
-                os.Remove(filePath)
-                return err
-            }
-            bytesReceived += int64(n)
-        }
+		if n > 0 {
+			if _, err := file.Write(buf[:n]); err != nil {
+				conn.Write([]byte("Error: Failed to write file\n"))
+				os.Remove(filePath)
+				return err
+			}
+			bytesReceived += int64(n)
+		}
 
-        if err == io.EOF {
-            break
-        }
-    }
+		if err == io.EOF {
+			break
+		}
+	}
 
-    log.Printf("File %s received from %s (%d bytes)", filepath.Base(filePath), username, bytesReceived)
+	log.Printf("File %s received from %s (%d bytes)", filepath.Base(filePath), username, bytesReceived)
 
-    // Send acknowledgment with newline
-    if _, err := conn.Write([]byte("Done\n")); err != nil {
-        return fmt.Errorf("error sending acknowledgment: %v", err)
-    }
+	// Send acknowledgment with newline
+	if _, err := conn.Write([]byte("Done\n")); err != nil {
+		return fmt.Errorf("error sending acknowledgment: %v", err)
+	}
 
-    return nil
+	return nil
 }
 
 func handleFileDownload(conn net.Conn, username string) error {
-    var fileNameLen int32
-    if err := binary.Read(conn, binary.LittleEndian, &fileNameLen); err != nil {
-        return fmt.Errorf("error reading filename length: %v", err)
-    }
+	var fileNameLen int32
+	if err := binary.Read(conn, binary.LittleEndian, &fileNameLen); err != nil {
+		return fmt.Errorf("error reading filename length: %v", err)
+	}
 
-    fileNameBytes := make([]byte, fileNameLen)
-    if _, err := io.ReadFull(conn, fileNameBytes); err != nil {
-        return fmt.Errorf("error reading filename: %v", err)
-    }
-    fileName := string(fileNameBytes)
+	fileNameBytes := make([]byte, fileNameLen)
+	if _, err := io.ReadFull(conn, fileNameBytes); err != nil {
+		return fmt.Errorf("error reading filename: %v", err)
+	}
+	fileName := string(fileNameBytes)
 
-    filePath := filepath.Join("uploads", username, fileName)
-    file, err := os.Open(filePath)
-    if err != nil {
-        return fmt.Errorf("error opening file: %v", err)
-    }
-    defer file.Close()
+	filePath := filepath.Join("uploads", username, fileName)
+	file, err := os.Open(filePath)
+	if err != nil {
+		// File doesn't exist or other error
+		// Send error status (0) followed by error message
+		if err := binary.Write(conn, binary.LittleEndian, int64(0)); err != nil {
+			return fmt.Errorf("error sending error status: %v", err)
+		}
+		errMsg := fmt.Sprintf("File %s does not exist", fileName)
+		errMsgLen := int32(len(errMsg))
+		if err := binary.Write(conn, binary.LittleEndian, errMsgLen); err != nil {
+			return fmt.Errorf("error sending error message length: %v", err)
+		}
+		if _, err := conn.Write([]byte(errMsg)); err != nil {
+			return fmt.Errorf("error sending error message: %v", err)
+		}
+		fmt.Printf("Client requested non-existent file: %s\n", fileName)
+		return nil
+	}
+	defer file.Close()
 
-    fileInfo, err := file.Stat()
-    if err != nil {
-        return fmt.Errorf("error getting file info: %v", err)
-    }
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("error getting file info: %v", err)
+	}
 
-    if err := binary.Write(conn, binary.LittleEndian, fileInfo.Size()); err != nil {
-        return fmt.Errorf("error sending file size: %v", err)
-    }
+	// Send file size (positive number indicates success)
+	if err := binary.Write(conn, binary.LittleEndian, fileInfo.Size()); err != nil {
+		return fmt.Errorf("error sending file size: %v", err)
+	}
 
-    buf := make([]byte, 1024)
-    for {
-        n, err := file.Read(buf)
-        if err == io.EOF {
-            break
-        }
-        if err != nil {
-            return fmt.Errorf("error reading file: %v", err)
-        }
+	buf := make([]byte, 1024)
+	for {
+		n, err := file.Read(buf)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("error reading file: %v", err)
+		}
 
-        if _, err := conn.Write(buf[:n]); err != nil {
-            return fmt.Errorf("error sending file content: %v", err)
-        }
-    }
+		if _, err := conn.Write(buf[:n]); err != nil {
+			return fmt.Errorf("error sending file content: %v", err)
+		}
+	}
 
-    return nil
+	return nil
 }
 
 func handleListFiles(conn net.Conn, clientDir string) error {
-    files, err := os.ReadDir(clientDir)
-    if err != nil {
-        log.Printf("Error reading directory: %v", err)
-        return err
-    }
+	files, err := os.ReadDir(clientDir)
+	if err != nil {
+		log.Printf("Error reading directory: %v", err)
+		return err
+	}
 
-    // Send file count
-    fileCount := int32(len(files))
-    if err := binary.Write(conn, binary.LittleEndian, fileCount); err != nil {
-        return fmt.Errorf("error sending file count: %v", err)
-    }
+	// Send file count
+	fileCount := int32(len(files))
+	if err := binary.Write(conn, binary.LittleEndian, fileCount); err != nil {
+		return fmt.Errorf("error sending file count: %v", err)
+	}
 
-    // Send file information
-    for _, file := range files {
-        info, err := file.Info()
-        if err != nil {
-            continue
-        }
+	// Send file information
+	for _, file := range files {
+		info, err := file.Info()
+		if err != nil {
+			continue
+		}
 
 		// Send filename length
 		fileNameLen := int32(len(file.Name()))
@@ -358,8 +373,8 @@ func handleListFiles(conn net.Conn, clientDir string) error {
 	}
 
 	if _, err := conn.Write([]byte{0xFF}); err != nil {
-        return fmt.Errorf("error sending completion acknowledgment: %v", err)
-    }
+		return fmt.Errorf("error sending completion acknowledgment: %v", err)
+	}
 
 	return nil
 }
