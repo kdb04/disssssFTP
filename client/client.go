@@ -109,20 +109,28 @@ func authenticate(conn net.Conn) bool {
 		return false
 	}
 
-	serverResponse, err := bufio.NewReader(conn).ReadString('\n')
-	if err != nil {
-		fmt.Println("Error reading server response:", err)
-		return false
-	}
+    response := make([]byte, 1024)
+    n, err := conn.Read(response)
+    if err != nil {
+        fmt.Println("Error reading server response:", err)
+        return false
 
-	if strings.Contains(serverResponse, "Authentication successful") {
-		fmt.Println("Authentication successful")
-		return true
-	}
+    }
 
-	fmt.Println("Authentication successful.")
-	return true
-}
+    serverResponse := string(response[:n])
+    if strings.Contains(serverResponse, "Authentication failed") {
+        fmt.Println(strings.TrimSpace(serverResponse))
+        return false
+    }
+
+    if strings.Contains(serverResponse, "Authentication successful") {
+        fmt.Println("Authentication successful")
+        return true
+    }
+
+    fmt.Println("Unexpected server response")
+    return false
+} 
 
 func (f *FileOperation) uploadFile(filePath string) error {
     // Set deadline for entire operation
