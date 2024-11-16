@@ -266,7 +266,8 @@ func (f *FileOperation) downloadFile(fileName string) error {
 		return fmt.Errorf("server error: %s", string(errMsgBytes))
 	}
 
-	file, err := os.Create(fileName)
+	downloadPath := filepath.Join("Downloads", fileName)
+	file, err := os.Create(downloadPath)
 	if err != nil {
 		return fmt.Errorf("error creating file: %v", err)
 	}
