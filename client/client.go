@@ -66,7 +66,9 @@ func main() {
 			fmt.Print("Enter file name to download: ")
 			fileName, _ := reader.ReadString('\n')
 			fileName = strings.TrimSpace(fileName)
-			fileOp.downloadFile(fileName)
+			if err := fileOp.downloadFile(fileName); err != nil {
+				fmt.Printf("Download failed: %v\n", err)
+			}
 		case "3":
 			fmt.Print("Enter file name to view: ")
 			fileName, _ := reader.ReadString('\n')
@@ -109,49 +111,49 @@ func authenticate(conn net.Conn) bool {
 		return false
 	}
 
-    response := make([]byte, 1024)
-    n, err := conn.Read(response)
-    if err != nil {
-        fmt.Println("Error reading server response:", err)
-        return false
+	response := make([]byte, 1024)
+	n, err := conn.Read(response)
+	if err != nil {
+		fmt.Println("Error reading server response:", err)
+		return false
 
-    }
+	}
 
-    serverResponse := string(response[:n])
-    if strings.Contains(serverResponse, "Authentication failed") {
-        fmt.Println(strings.TrimSpace(serverResponse))
-        return false
-    }
+	serverResponse := string(response[:n])
+	if strings.Contains(serverResponse, "Authentication failed") {
+		fmt.Println(strings.TrimSpace(serverResponse))
+		return false
+	}
 
-    if strings.Contains(serverResponse, "Authentication successful") {
-        fmt.Println("Authentication successful")
-        return true
-    }
+	if strings.Contains(serverResponse, "Authentication successful") {
+		fmt.Println("Authentication successful")
+		return true
+	}
 
-    fmt.Println("Unexpected server response")
-    return false
-} 
+	fmt.Println("Unexpected server response")
+	return false
+}
 
 func (f *FileOperation) uploadFile(filePath string) error {
-    // Set deadline for entire operation
-    f.conn.SetDeadline(time.Now().Add(5 * time.Minute))
-    defer f.conn.SetDeadline(time.Time{})
+	// Set deadline for entire operation
+	f.conn.SetDeadline(time.Now().Add(5 * time.Minute))
+	defer f.conn.SetDeadline(time.Time{})
 
-    file, err := os.Open(filePath)
-    if err != nil {
-        return fmt.Errorf("error opening file: %v", err)
-    }
-    defer file.Close()
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("error opening file: %v", err)
+	}
+	defer file.Close()
 
-    // Send operation type with explicit write
-    if _, err := f.conn.Write([]byte{1}); err != nil {
-        return fmt.Errorf("error sending operation type: %v", err)
-    }
+	// Send operation type with explicit write
+	if _, err := f.conn.Write([]byte{1}); err != nil {
+		return fmt.Errorf("error sending operation type: %v", err)
+	}
 
-    // Small delay to ensure operation type is received
-    time.Sleep(100 * time.Millisecond)
+	// Small delay to ensure operation type is received
+	time.Sleep(100 * time.Millisecond)
 
-    fileInfo, err := file.Stat()
+	fileInfo, err := file.Stat()
 	if err != nil {
 		return fmt.Errorf("error getting file info: %v", err)
 	}
@@ -202,30 +204,97 @@ func (f *FileOperation) uploadFile(filePath string) error {
 	}
 	fmt.Println()
 
-	 // After sending all file content, flush the connection
-	 if flusher, ok := f.conn.(interface{ Flush() error }); ok {
-        if err := flusher.Flush(); err != nil {
-            return fmt.Errorf("error flushing connection: %v", err)
-        }
-    }
+	// After sending all file content, flush the connection
+	if flusher, ok := f.conn.(interface{ Flush() error }); ok {
+		if err := flusher.Flush(); err != nil {
+			return fmt.Errorf("error flushing connection: %v", err)
+		}
+	}
 
-    // After upload, ensure connection is clear
-    response := make([]byte, 5) // "Done\n" is 5 bytes
-    if _, err := io.ReadFull(f.conn, response); err != nil {
-        return fmt.Errorf("error reading server response: %v", err)
-    }
+	// After upload, ensure connection is clear
+	response := make([]byte, 5) // "Done\n" is 5 bytes
+	if _, err := io.ReadFull(f.conn, response); err != nil {
+		return fmt.Errorf("error reading server response: %v", err)
+	}
 
-    if string(response) != "Done\n" {
-        return fmt.Errorf("unexpected server response: %s", response)
-    }
+	if string(response) != "Done\n" {
+		return fmt.Errorf("unexpected server response: %s", response)
+	}
 
-    fmt.Printf("Successfully sent %s (%d bytes)\n", fileName, bytesSent)
-    return nil
+	fmt.Printf("Successfully sent %s (%d bytes)\n", fileName, bytesSent)
+	return nil
 }
 
-// Placeholder functions for other operations
-func (f *FileOperation) downloadFile(fileName string) {
-	fmt.Println("Sai Sathvik - Download functionality not implemented yet")
+func (f *FileOperation) downloadFile(fileName string) error {
+	f.conn.SetDeadline(time.Now().Add(5 * time.Minute))
+	defer f.conn.SetDeadline(time.Time{})
+
+	if _, err := f.conn.Write([]byte{2}); err != nil {
+		return fmt.Errorf("error sending operation type: %v", err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	fileNameBytes := []byte(fileName)
+	fileNameLen := int32(len(fileNameBytes))
+
+	if err := binary.Write(f.conn, binary.LittleEndian, fileNameLen); err != nil {
+		return fmt.Errorf("error sending filename length: %v", err)
+	}
+
+	if _, err := f.conn.Write(fileNameBytes); err != nil {
+		return fmt.Errorf("error sending filename: %v", err)
+	}
+
+	var fileSize int64
+	if err := binary.Read(f.conn, binary.LittleEndian, &fileSize); err != nil {
+		return fmt.Errorf("error reading file size: %v", err)
+	}
+
+	// Check if server reported an error (fileSize == 0)
+	if fileSize == 0 {
+		var errMsgLen int32
+		if err := binary.Read(f.conn, binary.LittleEndian, &errMsgLen); err != nil {
+			return fmt.Errorf("error reading error message length: %v", err)
+		}
+
+		errMsgBytes := make([]byte, errMsgLen)
+		if _, err := io.ReadFull(f.conn, errMsgBytes); err != nil {
+			return fmt.Errorf("error reading error message: %v", err)
+		}
+
+		return fmt.Errorf("server error: %s", string(errMsgBytes))
+	}
+
+	downloadPath := filepath.Join("Downloads", fileName)
+	file, err := os.Create(downloadPath)
+	if err != nil {
+		return fmt.Errorf("error creating file: %v", err)
+	}
+	defer file.Close()
+
+	buf := make([]byte, bufferSize)
+	bytesReceived := int64(0)
+	for bytesReceived < fileSize {
+		n, err := f.conn.Read(buf)
+		if err != nil && err != io.EOF {
+			return fmt.Errorf("error reading file content: %v", err)
+		}
+
+		if n > 0 {
+			if _, err := file.Write(buf[:n]); err != nil {
+				return fmt.Errorf("error writing to file: %v", err)
+			}
+			bytesReceived += int64(n)
+		}
+
+		if err == io.EOF {
+			break
+		}
+	}
+
+	fmt.Printf("Successfully received %s (%d bytes)\n", fileName, bytesReceived)
+	return nil
 }
 
 func (f *FileOperation) viewFile(fileName string) {
@@ -237,15 +306,15 @@ func (f *FileOperation) deleteFile(fileName string) {
 }
 
 func (f *FileOperation) listFiles() {
-    // Set a deadline for the operation
-    f.conn.SetDeadline(time.Now().Add(30 * time.Second))
-    defer f.conn.SetDeadline(time.Time{})
+	// Set a deadline for the operation
+	f.conn.SetDeadline(time.Now().Add(30 * time.Second))
+	defer f.conn.SetDeadline(time.Time{})
 
-    // Send list files operation type (5)
-    if _, err := f.conn.Write([]byte{5}); err != nil {
-        fmt.Printf("Error sending operation type: %v\n", err)
-        return
-    }
+	// Send list files operation type (5)
+	if _, err := f.conn.Write([]byte{5}); err != nil {
+		fmt.Printf("Error sending operation type: %v\n", err)
+		return
+	}
 	// Send list files operation type (5)
 	if err := binary.Write(f.conn, binary.LittleEndian, byte(5)); err != nil {
 		fmt.Printf("Error sending operation type: %v\n", err)
@@ -316,23 +385,23 @@ func (f *FileOperation) listFiles() {
 	}
 
 	ack := make([]byte, 1)
-    if _, err := f.conn.Read(ack); err != nil {
-        fmt.Printf("Error reading completion acknowledgment: %v\n", err)
-        return
-    }
-    if ack[0] != 0xFF {
-        fmt.Println("Invalid completion acknowledgment")
-        return
-    }
+	if _, err := f.conn.Read(ack); err != nil {
+		fmt.Printf("Error reading completion acknowledgment: %v\n", err)
+		return
+	}
+	if ack[0] != 0xFF {
+		fmt.Println("Invalid completion acknowledgment")
+		return
+	}
 
-    // Clear any remaining data in connection
-    f.conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
-    discardBuf := make([]byte, 1024)
-    for {
-        _, err := f.conn.Read(discardBuf)
-        if err != nil {
-            break
-        }
-    }
-    f.conn.SetReadDeadline(time.Time{})
+	// Clear any remaining data in connection
+	f.conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	discardBuf := make([]byte, 1024)
+	for {
+		_, err := f.conn.Read(discardBuf)
+		if err != nil {
+			break
+		}
+	}
+	f.conn.SetReadDeadline(time.Time{})
 }
