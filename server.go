@@ -203,6 +203,12 @@ func handleClientOperations(conn net.Conn, username, clientDir string) {
             }
             reader.Reset(conn)
 
+		case 2: // File download
+			if err := handleFileDownload(conn, username); err != nil {
+				log.Printf("Error handling file download for %s: %v", username, err)
+				return
+			}
+
         case 5: // List files
             if err := handleListFiles(conn, clientDir); err != nil {
                 log.Printf("Error handling list files for %s: %v", username, err)
@@ -257,6 +263,52 @@ func handleFileUpload(conn net.Conn, filePath string, fileSize int64, username s
     // Send acknowledgment with newline
     if _, err := conn.Write([]byte("Done\n")); err != nil {
         return fmt.Errorf("error sending acknowledgment: %v", err)
+    }
+
+    return nil
+}
+
+func handleFileDownload(conn net.Conn, username string) error {
+    var fileNameLen int32
+    if err := binary.Read(conn, binary.LittleEndian, &fileNameLen); err != nil {
+        return fmt.Errorf("error reading filename length: %v", err)
+    }
+
+    fileNameBytes := make([]byte, fileNameLen)
+    if _, err := io.ReadFull(conn, fileNameBytes); err != nil {
+        return fmt.Errorf("error reading filename: %v", err)
+    }
+    fileName := string(fileNameBytes)
+
+    filePath := filepath.Join("uploads", username, fileName)
+    file, err := os.Open(filePath)
+    if err != nil {
+        return fmt.Errorf("error opening file: %v", err)
+    }
+    defer file.Close()
+
+    fileInfo, err := file.Stat()
+    if err != nil {
+        return fmt.Errorf("error getting file info: %v", err)
+    }
+
+    if err := binary.Write(conn, binary.LittleEndian, fileInfo.Size()); err != nil {
+        return fmt.Errorf("error sending file size: %v", err)
+    }
+
+    buf := make([]byte, 1024)
+    for {
+        n, err := file.Read(buf)
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            return fmt.Errorf("error reading file: %v", err)
+        }
+
+        if _, err := conn.Write(buf[:n]); err != nil {
+            return fmt.Errorf("error sending file content: %v", err)
+        }
     }
 
     return nil

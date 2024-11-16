@@ -64,9 +64,11 @@ func main() {
 			}
 		case "2":
 			fmt.Print("Enter file name to download: ")
-			fileName, _ := reader.ReadString('\n')
-			fileName = strings.TrimSpace(fileName)
-			fileOp.downloadFile(fileName)
+            fileName, _ := reader.ReadString('\n')
+            fileName = strings.TrimSpace(fileName)
+            if err := fileOp.downloadFile(fileName); err != nil {
+                fmt.Printf("Download failed: %v\n", err)
+            }
 		case "3":
 			fmt.Print("Enter file name to view: ")
 			fileName, _ := reader.ReadString('\n')
@@ -223,9 +225,60 @@ func (f *FileOperation) uploadFile(filePath string) error {
     return nil
 }
 
-// Placeholder functions for other operations
-func (f *FileOperation) downloadFile(fileName string) {
-	fmt.Println("Sai Sathvik - Download functionality not implemented yet")
+func (f *FileOperation) downloadFile(fileName string) error {
+    f.conn.SetDeadline(time.Now().Add(5 * time.Minute))
+    defer f.conn.SetDeadline(time.Time{})
+
+    if _, err := f.conn.Write([]byte{2}); err != nil {
+        return fmt.Errorf("error sending operation type: %v", err)
+    }
+
+    time.Sleep(100 * time.Millisecond)
+
+    fileNameBytes := []byte(fileName)
+    fileNameLen := int32(len(fileNameBytes))
+
+    if err := binary.Write(f.conn, binary.LittleEndian, fileNameLen); err != nil {
+        return fmt.Errorf("error sending filename length: %v", err)
+    }
+
+    if _, err := f.conn.Write(fileNameBytes); err != nil {
+        return fmt.Errorf("error sending filename: %v", err)
+    }
+
+    var fileSize int64
+    if err := binary.Read(f.conn, binary.LittleEndian, &fileSize); err != nil {
+        return fmt.Errorf("error reading file size: %v", err)
+    }
+
+    file, err := os.Create(fileName)
+    if err != nil {
+        return fmt.Errorf("error creating file: %v", err)
+    }
+    defer file.Close()
+
+    buf := make([]byte, bufferSize)
+    bytesReceived := int64(0)
+    for bytesReceived < fileSize {
+        n, err := f.conn.Read(buf)
+        if err != nil && err != io.EOF {
+            return fmt.Errorf("error reading file content: %v", err)
+        }
+
+        if n > 0 {
+            if _, err := file.Write(buf[:n]); err != nil {
+                return fmt.Errorf("error writing to file: %v", err)
+            }
+            bytesReceived += int64(n)
+        }
+
+        if err == io.EOF {
+            break
+        }
+    }
+
+    fmt.Printf("Successfully received %s (%d bytes)\n", fileName, bytesReceived)
+    return nil
 }
 
 func (f *FileOperation) viewFile(fileName string) {
