@@ -230,7 +230,7 @@ func handleClientOperations(conn net.Conn, username, clientDir string) {
 			reader.Reset(conn)
 
 		case 4: // Delete file(s)
-			if err := handleFileDeletion(conn, clientDir, username); err != nil {
+			if err := handleFileDeletion(conn, username); err != nil {
 				log.Printf("Error handling file deletion for %s: %v", username, err)
 				return
 			}
@@ -468,77 +468,55 @@ func handleViewFile(conn net.Conn, filePath string, username string) error {
 	return nil
 }
 
-func handleFileDeletion(conn net.Conn, clientDir, username string) error {
-	// Read the file name length sent by the client
-	var fileNameLen int32
-	if err := binary.Read(conn, binary.LittleEndian, &fileNameLen); err != nil {
-		sendResponse(conn, fmt.Sprintf("Error reading request: %v\n", err))
-		return fmt.Errorf("error reading file name length: %v", err)
-	}
+func handleFileDeletion(conn net.Conn, username string) error {
+    // Read filename length
+    var fileNameLen int32
+    if err := binary.Read(conn, binary.LittleEndian, &fileNameLen); err != nil {
+        return fmt.Errorf("error reading filename length: %v", err)
+    }
 
-	var fileName string
-	if fileNameLen > 0 {
-		// Read the file name from the client
-		fileNameBytes := make([]byte, fileNameLen)
-		if _, err := io.ReadFull(conn, fileNameBytes); err != nil {
-			sendResponse(conn, fmt.Sprintf("Error reading filename: %v\n", err))
-			return fmt.Errorf("error reading file name: %v", err)
-		}
-		fileName = string(fileNameBytes)
-	}
+    // Read filename
+    fileNameBuf := make([]byte, fileNameLen)
+    if _, err := io.ReadFull(conn, fileNameBuf); err != nil {
+        return fmt.Errorf("error reading filename: %v", err)
+    }
+    fileName := string(fileNameBuf)
 
-	if fileName == "" {
-		// Delete all files in the directory
-		files, err := os.ReadDir(clientDir)
-		if err != nil {
-			sendResponse(conn, "Error: Unable to read directory contents.\n")
-			return err
-		}
+    // Construct full file path and ensure it's within client directory
+    filePath := filepath.Join("uploads", username ,fileName)
+	if !strings.HasPrefix(filePath, filepath.Join("uploads", username)) {
+        return sendResponse(conn, "Error: Invalid file path\n")
+    }
 
-		if len(files) == 0 {
-			sendResponse(conn, "No files found to delete.\n")
-			return nil
-		}
+    // Check if file exists
+    if _, err := os.Stat(filePath); os.IsNotExist(err) {
+        return sendResponse(conn, fmt.Sprintf("Error: File '%s' does not exist\n", fileName))
+    }
 
-		deletedCount := 0
-		for _, file := range files {
-			filePath := filepath.Join(clientDir, file.Name())
-			if err := os.Remove(filePath); err != nil {
-				log.Printf("Failed to delete file %s: %v", file.Name(), err)
-				continue
-			}
-			deletedCount++
-			log.Printf("Deleted file: %s from %s's directory", file.Name(), username)
-		}
+    // Delete the file
+    if err := os.Remove(filePath); err != nil {
+        return sendResponse(conn, fmt.Sprintf("Error deleting file: %v\n", err))
+    }
 
-		sendResponse(conn, fmt.Sprintf("Successfully deleted %d files.\n", deletedCount))
-	} else {
-		// Delete a specific file
-		filePath := filepath.Join(clientDir, fileName)
-
-		// Check if the file exists before trying to delete it
-		_, err := os.Stat(filePath)
-		if os.IsNotExist(err) {
-			sendResponse(conn, fmt.Sprintf("Error: File %s does not exist.\n", fileName))
-			return nil
-		}
-
-		// Attempt to delete the file
-		if err := os.Remove(filePath); err != nil {
-			sendResponse(conn, fmt.Sprintf("Error: Could not delete file %s.\n", fileName))
-			return err
-		}
-
-		log.Printf("Deleted file: %s from %s's directory", fileName, username)
-		sendResponse(conn, fmt.Sprintf("File %s deleted successfully.\n", fileName))
-	}
-
-	return nil
+    // Send success message
+    log.Printf("File %s deleted by %s", fileName, username)
+    return sendResponse(conn, fmt.Sprintf("File '%s' deleted successfully\n", fileName))
 }
-func sendResponse(conn net.Conn, message string) {
-	if _, err := conn.Write([]byte(message)); err != nil {
-		log.Printf("Error sending response: %v", err)
-	}
+
+// Helper function to send responses with length prefix
+func sendResponse(conn net.Conn, message string) error {
+    // Send message length
+    messageLen := int32(len(message))
+    if err := binary.Write(conn, binary.LittleEndian, messageLen); err != nil {
+        return fmt.Errorf("error sending response length: %v", err)
+    }
+
+    // Send message
+    if _, err := conn.Write([]byte(message)); err != nil {
+        return fmt.Errorf("error sending response: %v", err)
+    }
+
+    return nil
 }
 
 func handleShutdown(signalChannel chan os.Signal, wg *sync.WaitGroup) {
