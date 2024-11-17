@@ -267,6 +267,9 @@ func (f *FileOperation) downloadFile(fileName string) error {
 	}
 
 	downloadPath := filepath.Join("Downloads", fileName)
+	if err := os.MkdirAll("Downloads", os.ModePerm); err != nil {
+		return fmt.Errorf("error creating Downloads directory: %v", err)
+	}
 	file, err := os.Create(downloadPath)
 	if err != nil {
 		return fmt.Errorf("error creating file: %v", err)
@@ -299,97 +302,97 @@ func (f *FileOperation) downloadFile(fileName string) error {
 
 func (f *FileOperation) viewFile(fileName string) {
 	//fmt.Println("Niggil - View functionality not implemented yet")
-    //Create temp directory
-    tempDir, err := os.MkdirTemp("", "file-view-*")
-    if err != nil {
-        fmt.Printf("Error creating temporary directory: %v\n", err)
-        return
-    }
-    defer os.RemoveAll(tempDir) //Clear temp directory after viewing is done
+	//Create temp directory
+	tempDir, err := os.MkdirTemp("", "file-view-*")
+	if err != nil {
+		fmt.Printf("Error creating temporary directory: %v\n", err)
+		return
+	}
+	defer os.RemoveAll(tempDir) //Clear temp directory after viewing is done
 
-    //Deadline for operation
-    f.conn.SetDeadline(time.Now().Add(30 * time.Second))
-    defer f.conn.SetDeadline(time.Time{})
+	//Deadline for operation
+	f.conn.SetDeadline(time.Now().Add(30 * time.Second))
+	defer f.conn.SetDeadline(time.Time{})
 
-    if _, err := f.conn.Write([]byte{3}); err != nil {
-        fmt.Printf("Error sending operation type: %v\n", err)
-        return
-    }
+	if _, err := f.conn.Write([]byte{3}); err != nil {
+		fmt.Printf("Error sending operation type: %v\n", err)
+		return
+	}
 
-    fileNameLen := int32(len(fileName))
-    if err := binary.Write(f.conn, binary.LittleEndian, fileNameLen); err != nil {
-        fmt.Printf("Error sending filename length: %v\n", err)
-        return
-    }
+	fileNameLen := int32(len(fileName))
+	if err := binary.Write(f.conn, binary.LittleEndian, fileNameLen); err != nil {
+		fmt.Printf("Error sending filename length: %v\n", err)
+		return
+	}
 
-    if _, err := f.conn.Write([]byte(fileName)); err != nil {
-        fmt.Printf("Error sending filename: %v\n", err)
-        return
-    }
+	if _, err := f.conn.Write([]byte(fileName)); err != nil {
+		fmt.Printf("Error sending filename: %v\n", err)
+		return
+	}
 
-    status := make([]byte, 1)
-    if _, err := f.conn.Read(status); err != nil {
-        fmt.Printf("Error reading status: %v\n", err)
-        return
-    }
+	status := make([]byte, 1)
+	if _, err := f.conn.Read(status); err != nil {
+		fmt.Printf("Error reading status: %v\n", err)
+		return
+	}
 
-    if status[0] == 0 {
-        fmt.Println("File not found or error occurred")
-        return
-    }
+	if status[0] == 0 {
+		fmt.Println("File not found or error occurred")
+		return
+	}
 
-    var fileSize int64
-    if err := binary.Read(f.conn, binary.LittleEndian, &fileSize); err != nil {
-        fmt.Printf("Error reading file size: %v\n", err)
-        return
-    }
+	var fileSize int64
+	if err := binary.Read(f.conn, binary.LittleEndian, &fileSize); err != nil {
+		fmt.Printf("Error reading file size: %v\n", err)
+		return
+	}
 
-    // Create temporary file
-    tempFile := filepath.Join(tempDir, fileName)
-    file, err := os.Create(tempFile)
-    if err != nil {
-        fmt.Printf("Error creating temporary file: %v\n", err)
-        return
-    }
-    defer file.Close()
+	// Create temporary file
+	tempFile := filepath.Join(tempDir, fileName)
+	file, err := os.Create(tempFile)
+	if err != nil {
+		fmt.Printf("Error creating temporary file: %v\n", err)
+		return
+	}
+	defer file.Close()
 
-    // Read and save file content
-    bytesReceived := int64(0)
-    buf := make([]byte, 1024)
-    fmt.Println("\nFile content:")
-    fmt.Println(strings.Repeat("-", 80))
+	// Read and save file content
+	bytesReceived := int64(0)
+	buf := make([]byte, 1024)
+	fmt.Println("\nFile content:")
+	fmt.Println(strings.Repeat("-", 80))
 
-    for bytesReceived < fileSize {
-        n, err := f.conn.Read(buf)
-        if err != nil && err != io.EOF {
-            fmt.Printf("\nError receiving file content: %v\n", err)
-            return
-        }
+	for bytesReceived < fileSize {
+		n, err := f.conn.Read(buf)
+		if err != nil && err != io.EOF {
+			fmt.Printf("\nError receiving file content: %v\n", err)
+			return
+		}
 
-        if n > 0 {
-            fmt.Print(string(buf[:n])) //Writing to console
-            //Writing to temp directory
-            if _, err := file.Write(buf[:n]); err != nil {
-                fmt.Printf("\nError writing to temporary file: %v\n", err)
-                return
-            }
-            bytesReceived += int64(n)
-        }
+		if n > 0 {
+			fmt.Print(string(buf[:n])) //Writing to console
+			//Writing to temp directory
+			if _, err := file.Write(buf[:n]); err != nil {
+				fmt.Printf("\nError writing to temporary file: %v\n", err)
+				return
+			}
+			bytesReceived += int64(n)
+		}
 
-        if bytesReceived >= fileSize {
-            break
-        }
-    }
+		if bytesReceived >= fileSize {
+			break
+		}
+	}
 
-    //Read Completion Marker
-    marker := make([]byte, 1)
-    f.conn.SetDeadline(time.Now().Add(time.Second))
-    _, err = f.conn.Read(marker)
-    if err != nil || marker[0] != 0XFF{
-        fmt.Printf("\nWarning: Completion marker not received\n")
-    }
-    fmt.Println("\n" + strings.Repeat("-", 80))
-    fmt.Printf("\nReceived %d bytes\n", bytesReceived)
+	//Read Completion Marker
+	marker := make([]byte, 1)
+	f.conn.SetDeadline(time.Now().Add(time.Second))
+	_, err = f.conn.Read(marker)
+	if err != nil || marker[0] != 0xFF {
+		fmt.Printf("\nWarning: Completion marker not received\n")
+	}
+	fmt.Println("\n" + strings.Repeat("-", 80))
+	fmt.Printf("\nReceived %d bytes\n", bytesReceived)
 }
 
 func (f *FileOperation) deleteFile(fileName string) {
