@@ -396,40 +396,44 @@ func (f *FileOperation) viewFile(fileName string) {
 }
 
 func (f *FileOperation) deleteFile(fileName string) {
-	// Set a deadline for the delete operation
-	f.conn.SetDeadline(time.Now().Add(1 * time.Minute))
-	defer f.conn.SetDeadline(time.Time{})
+    // Set operation timeout
+    f.conn.SetDeadline(time.Now().Add(30 * time.Second))
+    defer f.conn.SetDeadline(time.Time{})
 
-	// Send operation type (4 for delete)
-	if _, err := f.conn.Write([]byte{4}); err != nil {
-		fmt.Printf("Error sending operation type: %v\n", err)
-		return
-	}
+    // Send delete operation type (4)
+    if err := binary.Write(f.conn, binary.LittleEndian, byte(4)); err != nil {
+        fmt.Printf("Error sending operation type: %v\n", err)
+        return
+    }
 
-	// Send the file name length
-	fileNameLen := int32(len(fileName))
-	if err := binary.Write(f.conn, binary.LittleEndian, fileNameLen); err != nil {
-		fmt.Printf("Error sending file name length: %v\n", err)
-		return
-	}
+    // Send filename length
+    fileNameLen := int32(len(fileName))
+    if err := binary.Write(f.conn, binary.LittleEndian, fileNameLen); err != nil {
+        fmt.Printf("Error sending filename length: %v\n", err)
+        return
+    }
 
-	// Send the file name if provided
-	if fileNameLen > 0 {
-		if _, err := f.conn.Write([]byte(fileName)); err != nil {
-			fmt.Printf("Error sending file name: %v\n", err)
-			return
-		}
-	}
+    // Send filename
+    if _, err := f.conn.Write([]byte(fileName)); err != nil {
+        fmt.Printf("Error sending filename: %v\n", err)
+        return
+    }
 
-	// Read server's response using a buffered reader
-	reader := bufio.NewReader(f.conn)
-	response, err := reader.ReadString('\n')
-	if err != nil {
-		fmt.Printf("Error reading server response: %v\n", err)
-		return
-	}
+    // Read response length
+    var respLen int32
+    if err := binary.Read(f.conn, binary.LittleEndian, &respLen); err != nil {
+        fmt.Printf("Error reading response length: %v\n", err)
+        return
+    }
 
-	fmt.Print(response)
+    // Read response message
+    responseBuf := make([]byte, respLen)
+    if _, err := io.ReadFull(f.conn, responseBuf); err != nil {
+        fmt.Printf("Error reading response: %v\n", err)
+        return
+    }
+
+    fmt.Print(string(responseBuf))
 }
 
 func (f *FileOperation) listFiles() {
