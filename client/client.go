@@ -396,7 +396,40 @@ func (f *FileOperation) viewFile(fileName string) {
 }
 
 func (f *FileOperation) deleteFile(fileName string) {
-	fmt.Println("Lohit - Delete functionality not implemented yet")
+	// Set a deadline for the delete operation
+	f.conn.SetDeadline(time.Now().Add(1 * time.Minute))
+	defer f.conn.SetDeadline(time.Time{})
+
+	// Send operation type (4 for delete)
+	if _, err := f.conn.Write([]byte{4}); err != nil {
+		fmt.Printf("Error sending operation type: %v\n", err)
+		return
+	}
+
+	// Send the file name length
+	fileNameLen := int32(len(fileName))
+	if err := binary.Write(f.conn, binary.LittleEndian, fileNameLen); err != nil {
+		fmt.Printf("Error sending file name length: %v\n", err)
+		return
+	}
+
+	// Send the file name if provided
+	if fileNameLen > 0 {
+		if _, err := f.conn.Write([]byte(fileName)); err != nil {
+			fmt.Printf("Error sending file name: %v\n", err)
+			return
+		}
+	}
+
+	// Read server's response using a buffered reader
+	reader := bufio.NewReader(f.conn)
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Printf("Error reading server response: %v\n", err)
+		return
+	}
+
+	fmt.Print(response)
 }
 
 func (f *FileOperation) listFiles() {
