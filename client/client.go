@@ -236,7 +236,7 @@ func (f *FileOperation) viewFile(fileName string) {
         fmt.Printf("Error creating temporary directory: %v\n", err)
         return
     }
-    defer os.RemoveAll(tempDir) //Clear temp directory after viewing is done 
+    defer os.RemoveAll(tempDir) //Clear temp directory after viewing is done
 
     //Deadline for operation
     f.conn.SetDeadline(time.Now().Add(30 * time.Second))
@@ -307,11 +307,20 @@ func (f *FileOperation) viewFile(fileName string) {
             bytesReceived += int64(n)
         }
 
-        if err == io.EOF {
+        if bytesReceived >= fileSize {
             break
         }
     }
+
+    //Read Completion Marker
+    marker := make([]byte, 1)
+    f.conn.SetDeadline(time.Now().Add(time.Second))
+    _, err = f.conn.Read(marker)
+    if err != nil || marker[0] != 0XFF{
+        fmt.Printf("\nWarning: Completion marker not received\n")
+    }
     fmt.Println("\n" + strings.Repeat("-", 80))
+    fmt.Printf("\nReceived %d bytes\n", bytesReceived)
 }
 
 func (f *FileOperation) deleteFile(fileName string) {

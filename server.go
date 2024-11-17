@@ -336,8 +336,11 @@ func handleViewFile(conn net.Conn, filePath string, username string) error {
     fileInfo, err := os.Stat(filePath)
     if err != nil {
         if os.IsNotExist(err) {
-            conn.Write([]byte{0}) 
-            return fmt.Errorf("file does not exist: %v", err)
+            if _, err := conn.Write([]byte{0}); err != nil{
+                return fmt.Errorf("Error sending not found status: %v", err)
+            } 
+            log.Printf("User %s attempted to view non-existent file: %s", username, filepath.Base(filePath))
+            return nil
         }
         conn.Write([]byte{0}) 
         log.Printf("Error checking file for user %s: %s - %v", username, filepath.Base(filePath), err)
@@ -364,6 +367,7 @@ func handleViewFile(conn net.Conn, filePath string, username string) error {
 
     // Send file content
     buf := make([]byte, 1024)
+    bytesSent := int64(0)
     for {
         n, err := file.Read(buf)
         if err == io.EOF {
@@ -376,11 +380,15 @@ func handleViewFile(conn net.Conn, filePath string, username string) error {
         if _, err := conn.Write(buf[:n]); err != nil {
             return fmt.Errorf("error sending file content: %v", err)
         }
+        bytesSent += int64(n)
     }
 
+    if _, err := conn.Write([]byte{0xFF}); err != nil{
+        return fmt.Errorf("Error sending completion marker: %v", err)
+    }
+    log.Printf("Successfully sent file %s to user %s (%d bytes)", filepath.Base(filePath), username, bytesSent)
     return nil
-}
-
+} 
 
 func handleShutdown(signalChannel chan os.Signal, wg *sync.WaitGroup) {
 	<-signalChannel
