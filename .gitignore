@@ -1,12 +1,11 @@
 test
-claudeai
-client/go.mod
 go.mod
 
 
-client/client.go
 /uploads
 test*
+/testing
+client/Downloads/
 client/test*
 client/go.sum
 go.sum
