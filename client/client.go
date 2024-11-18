@@ -19,7 +19,6 @@ import (
 const (
 	serverAddress = "localhost:9090"
 	bufferSize    = 1024
-	idleTimeout   = 5 * time.Minute
 )
 
 // FileOperation represents different file operations

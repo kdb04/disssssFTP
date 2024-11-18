@@ -464,7 +464,7 @@ func handleViewFile(conn net.Conn, filePath string, username string) error {
 	if _, err := conn.Write([]byte{0xFF}); err != nil {
 		return fmt.Errorf("Error sending completion marker: %v", err)
 	}
-	log.Printf("Successfully sent file %s to user %s (%d bytes)", filepath.Base(filePath), username, bytesSent)
+	log.Printf("Successfully viewing file %s to user %s (%d bytes)", filepath.Base(filePath), username, bytesSent)
 	return nil
 }
 
