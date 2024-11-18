@@ -230,7 +230,7 @@ func handleClientOperations(conn net.Conn, username, clientDir string) {
 			reader.Reset(conn)
 
 		case 4: // Delete file(s)
-			if err := handleFileDeletion(conn, username); err != nil {
+			if err := handleFileDeletion(reader, conn, username); err != nil {
 				log.Printf("Error handling file deletion for %s: %v", username, err)
 				return
 			}
@@ -468,56 +468,53 @@ func handleViewFile(conn net.Conn, filePath string, username string) error {
 	return nil
 }
 
-func handleFileDeletion(conn net.Conn, username string) error {
+func handleFileDeletion(reader *bufio.Reader, conn net.Conn, username string) error {
     // Read filename length
     var fileNameLen int32
-    if err := binary.Read(conn, binary.LittleEndian, &fileNameLen); err != nil {
+    if err := binary.Read(reader, binary.LittleEndian, &fileNameLen); err != nil {
         return fmt.Errorf("error reading filename length: %v", err)
     }
 
     // Read filename
-    fileNameBuf := make([]byte, fileNameLen)
-    if _, err := io.ReadFull(conn, fileNameBuf); err != nil {
+    fileNameBytes := make([]byte, fileNameLen)
+    if _, err := io.ReadFull(reader, fileNameBytes); err != nil {
         return fmt.Errorf("error reading filename: %v", err)
     }
-    fileName := string(fileNameBuf)
+    fileName := string(fileNameBytes)
 
-    // Construct full file path and ensure it's within client directory
-    filePath := filepath.Join("uploads", username ,fileName)
-	if !strings.HasPrefix(filePath, filepath.Join("uploads", username)) {
-        return sendResponse(conn, "Error: Invalid file path\n")
-    }
+    // Build file path
+    filePath := filepath.Join(baseDir, username, fileName)
 
-    // Check if file exists
-    if _, err := os.Stat(filePath); os.IsNotExist(err) {
-        return sendResponse(conn, fmt.Sprintf("Error: File '%s' does not exist\n", fileName))
-    }
+    // Lock before deleting
+    mu.Lock()
+    defer mu.Unlock()
 
-    // Delete the file
-    if err := os.Remove(filePath); err != nil {
-        return sendResponse(conn, fmt.Sprintf("Error deleting file: %v\n", err))
-    }
-
-    // Send success message
-    log.Printf("File %s deleted by %s", fileName, username)
-    return sendResponse(conn, fmt.Sprintf("File '%s' deleted successfully\n", fileName))
-}
-
-// Helper function to send responses with length prefix
-func sendResponse(conn net.Conn, message string) error {
-    // Send message length
-    messageLen := int32(len(message))
-    if err := binary.Write(conn, binary.LittleEndian, messageLen); err != nil {
-        return fmt.Errorf("error sending response length: %v", err)
-    }
-
-    // Send message
-    if _, err := conn.Write([]byte(message)); err != nil {
-        return fmt.Errorf("error sending response: %v", err)
+    // Attempt to delete the file
+    if _, err := os.Stat(filePath); err == nil {
+        // File exists, proceed to delete
+        if err := os.Remove(filePath); err != nil {
+            // Send failure response
+            if _, err := conn.Write([]byte{0}); err != nil {
+                return fmt.Errorf("error sending failure status: %v", err)
+            }
+            return fmt.Errorf("error deleting file: %v", err)
+        }
+        // Send success response
+        if _, err := conn.Write([]byte{1}); err != nil {
+            return fmt.Errorf("error sending success status: %v", err)
+        }
+        log.Printf("File '%s' deleted by user '%s'", fileName, username)
+    } else {
+        // File does not exist
+        if _, err := conn.Write([]byte{0}); err != nil {
+            return fmt.Errorf("error sending failure status: %v", err)
+        }
+        log.Printf("File '%s' not found for user '%s'", fileName, username)
     }
 
     return nil
 }
+
 
 func handleShutdown(signalChannel chan os.Signal, wg *sync.WaitGroup) {
 	<-signalChannel

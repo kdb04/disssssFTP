@@ -396,44 +396,42 @@ func (f *FileOperation) viewFile(fileName string) {
 }
 
 func (f *FileOperation) deleteFile(fileName string) {
-    // Set operation timeout
+    // Set deadline for operation
     f.conn.SetDeadline(time.Now().Add(30 * time.Second))
     defer f.conn.SetDeadline(time.Time{})
 
-    // Send delete operation type (4)
-    if err := binary.Write(f.conn, binary.LittleEndian, byte(4)); err != nil {
+    // Send operation type (4 for delete)
+    if _, err := f.conn.Write([]byte{4}); err != nil {
         fmt.Printf("Error sending operation type: %v\n", err)
         return
     }
 
-    // Send filename length
-    fileNameLen := int32(len(fileName))
+    // Send filename length and filename
+    fileNameBytes := []byte(fileName)
+    fileNameLen := int32(len(fileNameBytes))
+
     if err := binary.Write(f.conn, binary.LittleEndian, fileNameLen); err != nil {
         fmt.Printf("Error sending filename length: %v\n", err)
         return
     }
 
-    // Send filename
-    if _, err := f.conn.Write([]byte(fileName)); err != nil {
+    if _, err := f.conn.Write(fileNameBytes); err != nil {
         fmt.Printf("Error sending filename: %v\n", err)
         return
     }
 
-    // Read response length
-    var respLen int32
-    if err := binary.Read(f.conn, binary.LittleEndian, &respLen); err != nil {
-        fmt.Printf("Error reading response length: %v\n", err)
+    // Read response from server
+    status := make([]byte, 1)
+    if _, err := io.ReadFull(f.conn, status); err != nil {
+        fmt.Printf("Error reading status: %v\n", err)
         return
     }
 
-    // Read response message
-    responseBuf := make([]byte, respLen)
-    if _, err := io.ReadFull(f.conn, responseBuf); err != nil {
-        fmt.Printf("Error reading response: %v\n", err)
-        return
-    }
-
-    fmt.Print(string(responseBuf))
+    if status[0] == 1 {
+        fmt.Printf("File '%s' deleted successfully.\n", fileName)
+    } else {
+        fmt.Printf("Failed to delete file '%s'. File may not exist or an error occurred.\n", fileName)
+	}
 }
 
 func (f *FileOperation) listFiles() {
