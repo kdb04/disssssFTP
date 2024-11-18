@@ -482,6 +482,15 @@ func handleFileDeletion(reader *bufio.Reader, conn net.Conn, username string) er
     }
     fileName := string(fileNameBytes)
 
+	// Check for invalid filename
+	if strings.Contains(fileName, "..") {
+		if _, err := conn.Write([]byte{0}); err != nil {
+			return fmt.Errorf("error sending invalid filename status: %v", err)
+		}
+		log.Printf("Invalid filename '%s' attempted by user '%s'", fileName, username)
+		return fmt.Errorf("invalid filename: %s", fileName)
+	}
+
     // Build file path
     filePath := filepath.Join(baseDir, username, fileName)
 
