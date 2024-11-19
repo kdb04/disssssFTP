@@ -39,13 +39,13 @@ func main() {
 		log.Fatalf("Error reading credentials: %v", err)
 	}
 
-	listener, err = net.Listen("tcp", ":9090")
+	listener, err = net.Listen("tcp", ":8080")
 	if err != nil {
 		log.Fatalf("Error starting server: %v", err)
 	}
 	defer listener.Close()
 
-	log.Println("TCP server is listening on port 9090...")
+	log.Println("TCP server is listening on port 8080...")
 
 	var wg sync.WaitGroup
 	signalChannel := make(chan os.Signal, 1)
@@ -357,7 +357,7 @@ func handleFileDownload(conn net.Conn, username string) error {
 		bytesSent += int64(n)
 	}
 
-	fmt.Printf("File '%s' successfully downloaded by user '%s' (%d bytes)\n", fileName, username, bytesSent)
+	log.Printf("File '%s' successfully downloaded by user '%s' (%d bytes)\n", fileName, username, bytesSent)
 	return nil
 }
 

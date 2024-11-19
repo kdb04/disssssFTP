@@ -23,7 +23,7 @@ var (
 
 func init() {
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Enter server address (e.g., 192.168.167.199:9090): ")
+    fmt.Print("Enter server address (e.g., IP:8080):")
 	address, _ := reader.ReadString('\n')
 	serverAddress = strings.TrimSpace(address)
 }
