@@ -113,16 +113,8 @@ After successful authentication, the client can perform the following operations
 
 ### Client Functions (`client.go`)
 
-- 
-
-main()
-
-: Handles user interface and operation selection.
-- 
-
-authenticate(conn net.Conn) bool
-
-: Manages user authentication.
+- `main()`: Handles user interface and operation selection.
+- `authenticate(conn net.Conn) bool`: Manages user authentication.
 - `uploadFile(filePath string) error`: Uploads a file to the server.
 - `downloadFile(fileName string) error`: Downloads a file from the server.
 - `viewFile(fileName string)`: Views the content of a file from the server.
@@ -131,61 +123,17 @@ authenticate(conn net.Conn) bool
 
 ### Server Functions (`server.go`)
 
-- 
-
-main()
-
-: Starts the server and listens for incoming connections.
-- 
-
-readCredentials(filePath string) (map[string]string, error)
-
-: Reads user credentials from a file.
-- 
-
-handleConnection(conn net.Conn, credentials map[string]string, wg *sync.WaitGroup)
-
-: Manages individual client connections.
-- 
-
-authenticate(conn net.Conn, credentials map[string]string) string
-
-: Authenticates a client.
-- 
-
-handleClientOperations(conn net.Conn, username, clientDir string)
-
-: Processes client operation requests.
-- 
-
-handleFileUpload(conn net.Conn, filePath string, fileSize int64, username string) error
-
-: Handles file uploads.
-- 
-
-handleFileDownload(conn net.Conn, username string) error
-
-: Handles file downloads.
-- 
-
-handleViewFile(conn net.Conn, filePath string, username string) error
-
-: Handles file viewing.
-- 
-
-handleFileDeletion(reader *bufio.Reader, conn net.Conn, username string) error
-
-: Handles file deletions.
-- 
-
-handleListFiles(conn net.Conn, clientDir string) error
-
-: Handles listing files.
-- 
-
-handleShutdown(signalChannel chan os.Signal, wg *sync.WaitGroup)
-
-: Gracefully shuts down the server on interrupt.
+- `main()`: Starts the server and listens for incoming connections.
+- `readCredentials(filePath string) (map[string]string, error)`: Reads user credentials from a file.
+- `handleConnection(conn net.Conn, credentials map[string]string, wg *sync.WaitGroup)`: Manages individual client connections.
+- `authenticate(conn net.Conn, credentials map[string]string) string`: Authenticates a client.
+- `handleClientOperations(conn net.Conn, username, clientDir string)`: Processes client operation requests.
+- `handleFileUpload(conn net.Conn, filePath string, fileSize int64, username string) error`: Handles file uploads.
+- `handleFileDownload(conn net.Conn, username string) error`: Handles file downloads.
+- `handleViewFile(conn net.Conn, filePath string, username string) error`: Handles file viewing.
+- `handleFileDeletion(reader *bufio.Reader, conn net.Conn, username string) error`: Handles file deletions.
+- `handleListFiles(conn net.Conn, clientDir string) error`: Handles listing files.
+- `handleShutdown(signalChannel chan os.Signal, wg *sync.WaitGroup)`: Gracefully shuts down the server on interrupt.
 
 ## Instructions for Future Enhancements
 
@@ -198,11 +146,9 @@ To enhance security, especially when transmitting sensitive data like authentica
 - **TLS Encryption**:
   - Utilize Go's `crypto/tls` package to wrap the TCP connection with TLS.
   - Generate server certificates using a trusted CA or self-signed certificates for testing.
-  - Update both client and server to establish a `tls.Conn` instead of a regular 
+  - Update both client and server to establish a `tls.Conn` instead of a regular net.Conn
 
-net.Conn
 
-.
 
 #### Implementation Steps
 
@@ -239,9 +185,6 @@ net.Conn
   - Integrate with a secure authentication system or database.
   - Implement account lockout policies after multiple failed attempts.
 
-- **Concurrency Handling**:
-  - Enhance the server to handle multiple client connections concurrently using Goroutines more effectively.
-
 - **Logging and Monitoring**:
   - Implement comprehensive logging for auditing purposes.
   - Set up monitoring to track server health and performance.
@@ -253,7 +196,3 @@ net.Conn
 - **Client Improvements**:
   - Develop a GUI client for better user experience.
   - Add support for batch operations on multiple files.
-
----
-
-By following this documentation and the instructions provided, future developers can understand the current system and implement the suggested enhancements effectively.
