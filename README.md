@@ -33,11 +33,7 @@ This system facilitates secure file transfer operations between clients and a se
 1. **Establish TCP Connection**:
    - Client connects to server on port `9090`.
 2. **Send Credentials**:
-   - Client sends 
-
-username:password
-
- followed by a newline character.
+   - Client sends username:password followed by a newline character.
 3. **Server Response**:
    - On success: `Authentication successful. You are now connected.\n`
    - On failure: Appropriate error message and termination of the connection.
