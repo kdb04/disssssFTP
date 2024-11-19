@@ -23,7 +23,7 @@ var (
 
 func init() {
 	reader := bufio.NewReader(os.Stdin)
-    fmt.Print("Enter server address (e.g., IP:8080):")
+	fmt.Print("Enter server address (e.g., IP:8080):")
 	address, _ := reader.ReadString('\n')
 	serverAddress = strings.TrimSpace(address)
 }
@@ -439,10 +439,10 @@ func (f *FileOperation) listFiles() {
 	defer f.conn.SetDeadline(time.Time{})
 
 	// Send list files operation type (5)
-	if _, err := f.conn.Write([]byte{5}); err != nil {
-		fmt.Printf("Error sending operation type: %v\n", err)
-		return
-	}
+	// if _, err := f.conn.Write([]byte{5}); err != nil {
+	// 	fmt.Printf("Error sending operation type: %v\n", err)
+	// 	return
+	// }
 	// Send list files operation type (5)
 	if err := binary.Write(f.conn, binary.LittleEndian, byte(5)); err != nil {
 		fmt.Printf("Error sending operation type: %v\n", err)
