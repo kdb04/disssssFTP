@@ -307,7 +307,6 @@ func (f *FileOperation) downloadFile(fileName string) error {
 }
 
 func (f *FileOperation) viewFile(fileName string) {
-	//fmt.Println("Niggil - View functionality not implemented yet")
 	//Create temp directory
 	tempDir, err := os.MkdirTemp("", "file-view-*")
 	if err != nil {
@@ -363,35 +362,25 @@ func (f *FileOperation) viewFile(fileName string) {
 	defer file.Close()
 
 	// Read and save file content
-	bytesReceived := int64(0)
 	buf := make([]byte, 1024)
 	fmt.Println("\nFile content:")
 	fmt.Println(strings.Repeat("-", 80))
 
-	for bytesReceived < fileSize {
-		n, err := f.conn.Read(buf)
-		if err != nil && err != io.EOF {
-			fmt.Printf("\nError receiving file content: %v\n", err)
-			return
-		}
+	n, err := f.conn.Read(buf)
+	if err != nil && err != io.EOF {
+		fmt.Printf("\nError receiving file content: %v\n", err)
+		return
+	}
 
-		if n > 0 {
-			fmt.Print(string(buf[:n])) //Writing to console
-			//Writing to temp directory
-			if _, err := file.Write(buf[:n]); err != nil {
-				fmt.Printf("\nError writing to temporary file: %v\n", err)
-				return
-			}
-			bytesReceived += int64(n)
-		}
-
-		if bytesReceived >= fileSize {
-			break
-		}
+	fmt.Print(string(buf[:n])) //Writing to console
+	//Writing to temp directory
+	if _, err := file.Write(buf[:n]); err != nil {
+		fmt.Printf("\nError writing to temporary file: %v\n", err)
+		return
 	}
 
 	fmt.Println("\n" + strings.Repeat("-", 80))
-	fmt.Printf("\nReceived %d bytes\n", bytesReceived)
+	fmt.Printf("\nReceived 1024 bytes\n")
 }
 
 func (f *FileOperation) deleteFile(fileName string) {

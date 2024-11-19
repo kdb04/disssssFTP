@@ -1,8 +1,8 @@
 test
-
-
 /uploads
 test*
 /testing
 client/Downloads/
 client/test*
+go.mod
+client/go.mod

@@ -416,7 +416,7 @@ func handleViewFile(conn net.Conn, filePath string, username string) error {
 	if err != nil {
 		if os.IsNotExist(err) {
 			if _, err := conn.Write([]byte{0}); err != nil {
-				return fmt.Errorf("Error sending not found status: %v", err)
+				return fmt.Errorf("error sending not found status: %v", err)
 			}
 			log.Printf("User %s attempted to view non-existent file: %s", username, filepath.Base(filePath))
 			return nil
@@ -446,23 +446,16 @@ func handleViewFile(conn net.Conn, filePath string, username string) error {
 
 	// Send file content
 	buf := make([]byte, 1024)
-	bytesSent := int64(0)
-	for {
-		n, err := file.Read(buf)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("error reading file: %v", err)
-		}
-
-		if _, err := conn.Write(buf[:n]); err != nil {
-			return fmt.Errorf("error sending file content: %v", err)
-		}
-		bytesSent += int64(n)
+	n, err := file.Read(buf)
+	if err != nil {
+		return fmt.Errorf("error reading file: %v", err)
 	}
 
-	log.Printf("Successfully viewing file %s to user %s (%d bytes)", filepath.Base(filePath), username, bytesSent)
+	if _, err := conn.Write(buf[:n]); err != nil {
+		return fmt.Errorf("error sending file content: %v", err)
+	}
+
+	log.Printf("Successfully viewing file %s to user %s", filepath.Base(filePath), username)
 	return nil
 }
 
