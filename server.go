@@ -100,6 +100,7 @@ func handleConnection(conn net.Conn, credentials map[string]string, wg *sync.Wai
 		return
 	}
 
+	log.Printf("Client %s connected", username)
 	// Create a unique directory for the authenticated user
 	clientDir := filepath.Join(baseDir, username)
 	if err := os.MkdirAll(clientDir, 0755); err != nil {
