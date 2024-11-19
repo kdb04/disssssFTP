@@ -390,13 +390,6 @@ func (f *FileOperation) viewFile(fileName string) {
 		}
 	}
 
-	//Read Completion Marker
-	marker := make([]byte, 1)
-	f.conn.SetDeadline(time.Now().Add(time.Second))
-	_, err = f.conn.Read(marker)
-	if err != nil || marker[0] != 0xFF {
-		fmt.Printf("\nWarning: Completion marker not received\n")
-	}
 	fmt.Println("\n" + strings.Repeat("-", 80))
 	fmt.Printf("\nReceived %d bytes\n", bytesReceived)
 }
