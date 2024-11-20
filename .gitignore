@@ -5,4 +5,6 @@ test*
 client/Downloads/
 client/test*
 go.mod
+go.sum
 client/go.mod
+client/go/sum
